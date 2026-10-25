@@ -6,10 +6,12 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Patch flutter_sms namespace
+      - name: Fix Namespaces (App & Plugin)
         script: |
           python3 -c '
-          import glob, os
+          import glob, os, re
+
+          # 1. Patch flutter_sms plugin namespace
           paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
           for p in paths:
               with open(p, "r") as f:
@@ -18,7 +20,24 @@ workflows:
                   content = content.replace("android {", "android {\n    namespace \"com.babariviere.flutter_sms\"")
                   with open(p, "w") as f:
                       f.write(content)
-                  print(f"Patched successfully: {p}")
+                  print(f"Patched plugin: {p}")
+
+          # 2. Patch main app build.gradle namespace automatically
+          app_manifest = "android/app/src/main/AndroidManifest.xml"
+          app_gradle = "android/app/build.gradle"
+          if os.path.exists(app_manifest) and os.path.exists(app_gradle):
+              with open(app_manifest, "r") as f:
+                  m_content = f.read()
+              match = re.search(r"package=\"([^\"]+)\"", m_content)
+              if match:
+                  pkg_name = match.group(1)
+                  with open(app_gradle, "r") as f:
+                      g_content = f.read()
+                  if "namespace" not in g_content:
+                      g_content = g_content.replace("android {", f"android {{\n    namespace \"{pkg_name}\"")
+                      with open(app_gradle, "w") as f:
+                          f.write(g_content)
+                      print(f"Patched main app namespace to: {pkg_name}")
           '
       - name: Build Android APK
         script: flutter build apk --release --android-skip-build-dependency-validation
