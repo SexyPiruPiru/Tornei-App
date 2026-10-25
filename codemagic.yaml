@@ -6,6 +6,20 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
+      - name: Patch flutter_sms namespace
+        script: |
+          python3 -c '
+          import glob, os
+          paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
+          for p in paths:
+              with open(p, "r") as f:
+                  content = f.read()
+              if "namespace" not in content:
+                  content = content.replace("android {", "android {\n    namespace \"com.babariviere.flutter_sms\"")
+                  with open(p, "w") as f:
+                      f.write(content)
+                  print(f"Patched successfully: {p}")
+          '
       - name: Build Android APK
         script: flutter build apk --release --android-skip-build-dependency-validation
     artifacts:
