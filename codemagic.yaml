@@ -6,23 +6,31 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Fix Namespaces (App & Plugin)
+      - name: Fix flutter_sms (Namespace & Kotlin Version)
         script: |
           python3 -c '
           import glob, os, re
 
-          # 1. Patch flutter_sms plugin namespace
+          # 1. Patch flutter_sms namespace & old Kotlin version
           paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
           for p in paths:
               with open(p, "r") as f:
                   content = f.read()
+              
+              # Aggiunge il namespace se manca
               if "namespace" not in content:
                   content = content.replace("android {", "android {\n    namespace \"com.babariviere.flutter_sms\"")
-                  with open(p, "w") as f:
-                      f.write(content)
-                  print(f"Patched plugin: {p}")
+              
+              # Aggiorna la versione obsoleta di Kotlin 1.3.50 alla versione moderna 1.9.0
+              if "1.3.50" in content:
+                  content = content.replace("1.3.50", "1.9.0")
+                  print(f"Aggiornato Kotlin in: {p}")
+              
+              with open(p, "w") as f:
+                  f.write(content)
+              print(f"Plugin patchato con successo: {p}")
 
-          # 2. Patch main app build.gradle namespace automatically
+          # 2. Patch del namespace dell app principale
           app_manifest = "android/app/src/main/AndroidManifest.xml"
           app_gradle = "android/app/build.gradle"
           if os.path.exists(app_manifest) and os.path.exists(app_gradle):
@@ -35,9 +43,9 @@ workflows:
                       g_content = f.read()
                   if "namespace" not in g_content:
                       g_content = g_content.replace("android {", f"android {{\n    namespace \"{pkg_name}\"")
-                      with open(app_gradle, "w") as f:
+                      with open(app_gradle, "w5" if False else "w") as f:
                           f.write(g_content)
-                      print(f"Patched main app namespace to: {pkg_name}")
+                      print(f"Namespace dell app impostato a: {pkg_name}")
           '
       - name: Build Android APK
         script: flutter build apk --release --android-skip-build-dependency-validation
