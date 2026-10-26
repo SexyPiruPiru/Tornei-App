@@ -6,12 +6,12 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Fix flutter_sms & Bypass AAR Check
+      - name: Fix Compatibility & Force Stable AndroidX
         script: |
           python3 -c '
           import glob, os, re
 
-          # 1. Patch flutter_sms namespace & old Kotlin version
+          # 1. Patch flutter_sms plugin namespace & old Kotlin version
           paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
           for p in paths:
               with open(p, "r") as f:
@@ -23,42 +23,39 @@ workflows:
               with open(p, "w") as f:
                   f.write(content)
 
-          # 2. Patch main app namespace
+          # 2. Patch main app namespace in build.gradle.kts
+          app_gradle_kts = "android/app/build.gradle.kts"
           app_manifest = "android/app/src/main/AndroidManifest.xml"
-          app_gradle = "android/app/build.gradle"
-          if os.path.exists(app_manifest) and os.path.exists(app_gradle):
+          if os.path.exists(app_manifest) and os.path.exists(app_gradle_kts):
               with open(app_manifest, "r") as f:
                   m_content = f.read()
               match = re.search(r"package=\"([^\"]+)\"", m_content)
               if match:
                   pkg_name = match.group(1)
-                  with open(app_gradle, "r") as f:
+                  with open(app_gradle_kts, "r") as f:
                       g_content = f.read()
                   if "namespace" not in g_content:
-                      g_content = g_content.replace("android {", f"android {{\n    namespace \"{pkg_name}\"")
-                      with open(app_gradle, "w") as f:
+                      g_content = g_content.replace("android {", f"android {{\n    namespace = \"{pkg_name}\"")
+                      with open(app_gradle_kts, "w") as f:
                           f.write(g_content)
 
-          # 3. Disable checkReleaseAarMetadata to bypass AGP version mismatch
-          root_gradle = "android/build.gradle"
-          if os.path.exists(root_gradle):
-              with open(root_gradle, "r") as f:
-                  r_content = f.read()
-              fix_snippet = """
-          subprojects {
-              afterEvaluate { project ->
-                  project.tasks.all { task ->
-                      if (task.name.contains("checkReleaseAarMetadata") || task.name.contains("checkAarMetadata")) {
-                          task.enabled = false
-                      }
-                  }
+          # 3. Force compatible older androidx versions to bypass AGP version check
+          if os.path.exists(app_gradle_kts):
+              with open(app_gradle_kts, "r") as f:
+                  g_content = f.read()
+              override_snippet = """
+          configurations.all {
+              resolutionStrategy {
+                  force("androidx.core:core:1.12.0")
+                  force("androidx.core:core-ktx:1.12.0")
+                  force("androidx.browser:browser:1.7.0")
               }
           }
           """
-              if "checkAarMetadata" not in r_content:
-                  with open(root_gradle, "a") as f:
-                      f.write(fix_snippet)
-                  print("AAR metadata check disabled successfully.")
+              if "androidx.core:core:1.12.0" not in g_content:
+                  with open(app_gradle_kts, "a") as f:
+                      f.write(override_snippet)
+                  print("Injected stable AndroidX overrides.")
           '
       - name: Build Android APK
         script: flutter build apk --release --android-skip-build-dependency-validation
