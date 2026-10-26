@@ -6,12 +6,12 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Fix flutter_sms Manifest & Compatibility
+      - name: Fix flutter_sms Java/Kotlin Compatibility & Manifest
         script: |
           python3 -c '
           import glob, os, re
 
-          # 1. Patch flutter_sms plugin (namespace, Kotlin, and remove legacy package from manifest)
+          # 1. Patch flutter_sms plugin (namespace, Kotlin 1.9.0, Java 17 compatibility, remove legacy package)
           paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
           for p in paths:
               with open(p, "r") as f:
@@ -20,6 +20,12 @@ workflows:
                   content = content.replace("android {", "android {\n    namespace \"com.babariviere.flutter_sms\"")
               if "1.3.50" in content:
                   content = content.replace("1.3.50", "1.9.0")
+              
+              # Forza Java 17 per evitare conflitti con Kotlin 17
+              if "compileOptions" not in content:
+                  java_compat = "\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n"
+                  content = content.replace("android {", "android {" + java_compat)
+              
               with open(p, "w") as f:
                   f.write(content)
 
@@ -27,11 +33,9 @@ workflows:
           for mp in manifest_paths:
               with open(mp, "r") as f:
                   m_content = f.read()
-              # Rimuove l attributo package obsoleto che causa il fallimento
               m_content = re.sub(r"package=\"[^\"]+\"", "", m_content)
               with open(mp, "w") as f:
                   f.write(m_content)
-              print(f"Rimosso attributo package da: {mp}")
 
           # 2. Patch main app namespace in build.gradle.kts
           app_gradle_kts = "android/app/build.gradle.kts"
