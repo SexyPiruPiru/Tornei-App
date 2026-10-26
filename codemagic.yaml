@@ -6,12 +6,12 @@ workflows:
     scripts:
       - name: Get dependencies
         script: flutter pub get
-      - name: Fix flutter_sms Java/Kotlin Compatibility & Manifest
+      - name: Fix flutter_sms Registrar, Namespace & Compatibility
         script: |
           python3 -c '
           import glob, os, re
 
-          # 1. Patch flutter_sms plugin (namespace, Kotlin 1.9.0, Java 17 compatibility, remove legacy package)
+          # 1. Patch flutter_sms plugin (build.gradle, Kotlin, Java 17, and strip deprecated Registrar)
           paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/build.gradle"))
           for p in paths:
               with open(p, "r") as f:
@@ -20,14 +20,22 @@ workflows:
                   content = content.replace("android {", "android {\n    namespace \"com.babariviere.flutter_sms\"")
               if "1.3.50" in content:
                   content = content.replace("1.3.50", "1.9.0")
-              
-              # Forza Java 17 per evitare conflitti con Kotlin 17
               if "compileOptions" not in content:
                   java_compat = "\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n"
                   content = content.replace("android {", "android {" + java_compat)
-              
               with open(p, "w") as f:
                   f.write(content)
+
+          # Rimuove import e companion object con Registrar obsoleto nel codice Kotlin del plugin
+          kt_paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/src/main/kotlin/com/example/flutter_sms/FlutterSmsPlugin.kt"))
+          for kp in kt_paths:
+              with open(kp, "r") as f:
+                  k_content = f.read()
+              k_content = re.sub(r"import io\.flutter\.plugin\.common\.PluginRegistry\.Registrar[^\n]*\n", "", k_content)
+              k_content = re.sub(r"companion object\s*\{[^}]*Registrar[^}]*\}", "", k_content, flags=re.DOTALL)
+              with open(kp, "w") as kp_file:
+                  kp_file.write(k_content)
+              print(f"Rimosso Registrar da: {kp}")
 
           manifest_paths = glob.glob(os.path.expanduser("~/.pub-cache/hosted/pub.dev/flutter_sms-*/android/src/main/AndroidManifest.xml"))
           for mp in manifest_paths:
